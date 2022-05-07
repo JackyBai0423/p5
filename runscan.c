@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <string.h>
 #include "ext2_fs.h"
 #include "read_ext2.h"
 
@@ -24,6 +25,7 @@ int main(int argc, char **argv) {
 	printf("There are %u inodes in an inode table block and %u blocks in the idnode table\n", inodes_per_block, itable_blocks);
 	//iterate the first inode block
 	off_t start_inode_table = locate_inode_table(0, &group);
+	// TODO: make it iterate the entire inode table
     for (unsigned int i = 0; i < inodes_per_block; i++) {
             printf("inode %u: \n", i);
             struct ext2_inode *inode = malloc(sizeof(struct ext2_inode));
@@ -37,7 +39,20 @@ int main(int argc, char **argv) {
              printf("Is directory? %s \n Is Regular file? %s\n",
                 S_ISDIR(inode->i_mode) ? "true" : "false",
                 S_ISREG(inode->i_mode) ? "true" : "false");
-			
+			// if it is a regular file, copy it to the output dir
+			if (S_ISREG(inode->i_mode)) {
+				// read and parse the directory entries
+				struct ext2_dir_entry_2* entry =  (struct ext2_dir_entry_2*)(inode->i_block[0]);
+				char* filename = strdup(entry->name);
+				printf("filename %s\n", filename);
+				// open a new file
+				int temp_file = open(filename, O_WRONLY | O_TRUNC | O_CREAT, 0666); // TODO: change the name
+				uint file_size = inode->i_size;
+				// iterate the blocks
+				void* buffer = calloc(inode->i_size, 1);
+				// create a file of same size
+				write(temp_file, buffer, file_size);
+			}
 			// print i_block numberss
 			for(unsigned int i=0; i<EXT2_N_BLOCKS; i++)
 			{       if (i < EXT2_NDIR_BLOCKS)                                 /* direct blocks */
