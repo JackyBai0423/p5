@@ -30,7 +30,7 @@ int main(int argc, char **argv)
 	read_super_block(fd, 0, &super);
 	read_group_desc(fd, 0, &group);
 
-	printf("There are %u inodes in an inode table block and %u blocks in the idnode table\n", inodes_per_block, itable_blocks);
+	// printf("There are %u inodes in an inode table block and %u blocks in the idnode table\n", inodes_per_block, itable_blocks);
 	// iterate the first inode block
 	off_t start_inode_table = locate_inode_table(0, &group);
 	// TODO: make it iterate the entire inode table
@@ -84,8 +84,18 @@ int main(int argc, char **argv)
 			}
 
 			uint block_id = 0;
-			uint bytes_read;
-
+			uint bytes_read = 0;
+			for(; bytes_read < filesize && bytes_read < block_size * EXT2_NDIR_BLOCKS; bytes_read += block_size){
+				lseek(fd, BLOCK_OFFSET(inode->i_block[block_id]), SEEK_SET);
+				read(fd, buffer, block_size);
+				uint size_to_be_written = filesize - bytes_read;
+				if(size_to_be_written > block_size){
+					size_to_be_written = block_size;
+					block_id++;
+				}
+				write(file_inode, buffer, size_to_be_written);
+				write(file_ptr, buffer, size_to_be_written);
+			}
 			// read the indirect block
 			// single indirect block
 			if (inode->i_block[EXT2_IND_BLOCK] != 0)
@@ -93,7 +103,7 @@ int main(int argc, char **argv)
 				uint single_buffer[256];
 				lseek(fd, BLOCK_OFFSET(inode->i_block[EXT2_IND_BLOCK]), SEEK_SET);
 				read(fd, single_buffer, block_size);
-				for (block_id = 0; bytes_read < filesize && block_id < 256; bytes_read = bytes_read + block_size)
+				for (block_id = 0; bytes_read < filesize && block_id < 256; bytes_read += block_size)
 				{
 					lseek(fd, BLOCK_OFFSET(single_buffer[block_id]), SEEK_SET);
 					read(fd, buffer, block_size);
@@ -103,11 +113,39 @@ int main(int argc, char **argv)
 						size_to_be_written = block_size;
 						block_id++;
 					}
+					// printf("write %d bytes to file %d\n", size_to_be_written, i);
 					write(file_ptr, buffer, size_to_be_written);
 					write(file_inode, buffer, size_to_be_written);
 				}
 			}
-			// double
+			// double indirect block
+			if (inode->i_block[EXT2_DIND_BLOCK] != 0)
+			{
+				uint single_buffer[256];
+				uint double_buffer[256];
+				lseek(fd, BLOCK_OFFSET(inode->i_block[EXT2_DIND_BLOCK]), SEEK_SET);
+				read(fd, single_buffer, block_size);
+				uint single_id;
+				for (single_id = 0; bytes_read < filesize && single_id < 256; single_id++)
+				{
+					lseek(fd, BLOCK_OFFSET(single_buffer[single_id]), SEEK_SET);
+					read(fd, double_buffer, block_size);
+					for(block_id = 0; bytes_read < filesize && block_id < 256; bytes_read += block_size)
+					{
+						lseek(fd, BLOCK_OFFSET(double_buffer[block_id]), SEEK_SET);
+						read(fd, buffer, block_size);
+						uint size_to_be_written = filesize - bytes_read;
+						if (size_to_be_written > block_size)
+						{
+							size_to_be_written = block_size;
+							block_id++;
+						}
+						// printf("write %d bytes to file %d\n", size_to_be_written, i);
+						write(file_ptr, buffer, size_to_be_written);
+						write(file_inode, buffer, size_to_be_written);
+					}
+				}
+			}
 		}
 		else
 		{
@@ -172,7 +210,7 @@ int main(int argc, char **argv)
 					fclose(file);
 					rename(numbered_name, new_name);
 				}
-				printf("Inode Number:%d Name of file: %s\n", dentry->inode, name);
+				// printf("Inode Number:%d Name of file: %s\n", dentry->inode, name);
 				current_offset = current_offset + dentry->name_len + sizeof(dentry->inode) + sizeof(dentry->rec_len) + sizeof(dentry->name_len) + sizeof(dentry->file_type);
 				// current_offset = current_offset + dentry->rec_len;
 				if (current_offset % 4 != 0)
