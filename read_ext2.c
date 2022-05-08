@@ -14,7 +14,7 @@ unsigned int num_groups = 0;
 unsigned int inodes_per_group = 0;
 
 
-int debug = 1;          //turn on/off debug prints
+int debug = 0;          //turn on/off debug prints
 
 /* read the first super block to initialize common variables */
 void ext2_read_init( int                      fd)
@@ -212,6 +212,7 @@ void read_inode(fd, ngroup, offset, inode_no, inode)
      int                            inode_no;  /* the inode number to read  */
      struct ext2_inode             *inode;     /* where to put the inode */
 {
+		ngroup = ngroup;
         lseek(fd, offset + (inode_no-1)*sizeof(struct ext2_inode), SEEK_SET);
         read(fd, inode, sizeof(struct ext2_inode));
 }
