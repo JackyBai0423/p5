@@ -68,15 +68,15 @@ int main(int argc, char **argv)
 		{
 			// this inode represents a regular JPG file
 			uint filesize = inode->i_size;
-			char *inode_name = malloc(255);
-			snprintf(inode_name, 255, "%s/file-%d.jpg", argv[2], i);
+			char *inode_name = malloc(256);
+			snprintf(inode_name, 256, "%s/file-%d.jpg", argv[2], i);
 			int file_inode = open(inode_name, O_WRONLY | O_TRUNC | O_CREAT, 0666);
 			if (file_inode < 0)
 			{
 				return -1;
 			}
-			char *inode_number = malloc(255);
-			snprintf(inode_number, 255, "%s/%d.jpg", argv[2], i);
+			char *inode_number = malloc(256);
+			snprintf(inode_number, 256, "%s/%d.jpg", argv[2], i);
 			int file_ptr = open(inode_number, O_WRONLY | O_TRUNC | O_CREAT, 0666);
 			if (file_ptr < 0)
 			{
@@ -198,13 +198,13 @@ int main(int argc, char **argv)
 			{
 				if (dentry->name_len == 0)
 					break;
-				char *name = malloc(255);
+				char *name = malloc(256);
 				strncpy(name, dentry->name, dentry->name_len);
 				*(name + dentry->name_len) = '\0';
-				char* numbered_name = malloc(255);
-				snprintf(numbered_name, 255, "%s/%d.jpg", argv[2], dentry->inode);
-				char* new_name = malloc(255);
-				snprintf(new_name,255,"%s/%s",argv[2],name);
+				char* numbered_name = malloc(256);
+				snprintf(numbered_name, 256, "%s/%d.jpg", argv[2], dentry->inode);
+				char* new_name = malloc(512); // double the size make sure it is enough
+				snprintf(new_name,512,"%s/%s",argv[2],name);
 				FILE *file;
 				if((file = fopen(numbered_name, "r"))){
 					fclose(file);
@@ -213,10 +213,8 @@ int main(int argc, char **argv)
 				// printf("Inode Number:%d Name of file: %s\n", dentry->inode, name);
 				current_offset = current_offset + dentry->name_len + sizeof(dentry->inode) + sizeof(dentry->rec_len) + sizeof(dentry->name_len) + sizeof(dentry->file_type);
 				// current_offset = current_offset + dentry->rec_len;
-				if (current_offset % 4 != 0)
-				{
-					current_offset = current_offset + (4 - (current_offset % 4));
-				}
+				// aligned to 4 bytes
+				current_offset = (current_offset + 3) & ~3;
 				dentry = (struct ext2_dir_entry_2 *)&(dbuffer[current_offset]);
 			}
 		}
