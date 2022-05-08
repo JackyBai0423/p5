@@ -66,6 +66,8 @@ int main(int argc, char **argv)
 		// if it is a directory
 		if (S_ISREG(inode->i_mode) && is_jpg)
 		{
+			uint current_block = 0;
+			uint current_size = 0;
 			// this inode represents a regular JPG file
 			uint filesize = inode->i_size;
 			char *inode_name = malloc(256);
@@ -77,24 +79,25 @@ int main(int argc, char **argv)
 			}
 			char *inode_number = malloc(256);
 			snprintf(inode_number, 256, "%s/%d.jpg", argv[2], i);
-			int file_ptr = open(inode_number, O_WRONLY | O_TRUNC | O_CREAT, 0666);
-			if (file_ptr < 0)
+			int real_name_file = open(inode_number, O_WRONLY | O_TRUNC | O_CREAT, 0666);
+			if (real_name_file < 0)
 			{
 				return -1;
 			}
 
-			uint block_id = 0;
-			uint bytes_read = 0;
-			for(; bytes_read < filesize && bytes_read < block_size * EXT2_NDIR_BLOCKS; bytes_read += block_size){
-				lseek(fd, BLOCK_OFFSET(inode->i_block[block_id]), SEEK_SET);
+			while (current_size < filesize && current_size < block_size * EXT2_NDIR_BLOCKS)
+			{
+				lseek(fd, BLOCK_OFFSET(inode->i_block[current_block]), SEEK_SET);
 				read(fd, buffer, block_size);
-				uint size_to_be_written = filesize - bytes_read;
-				if(size_to_be_written > block_size){
+				uint size_to_be_written = filesize - current_size;
+				if (size_to_be_written > block_size)
+				{
 					size_to_be_written = block_size;
-					block_id++;
+					current_block++;
 				}
 				write(file_inode, buffer, size_to_be_written);
-				write(file_ptr, buffer, size_to_be_written);
+				write(real_name_file, buffer, size_to_be_written);
+				current_size += block_size;
 			}
 			// read the indirect block
 			// single indirect block
@@ -103,19 +106,21 @@ int main(int argc, char **argv)
 				uint single_buffer[256];
 				lseek(fd, BLOCK_OFFSET(inode->i_block[EXT2_IND_BLOCK]), SEEK_SET);
 				read(fd, single_buffer, block_size);
-				for (block_id = 0; bytes_read < filesize && block_id < 256; bytes_read += block_size)
+				current_block = 0; // reset block id
+				while (current_size < filesize && current_block < 256)
 				{
-					lseek(fd, BLOCK_OFFSET(single_buffer[block_id]), SEEK_SET);
+					lseek(fd, BLOCK_OFFSET(single_buffer[current_block]), SEEK_SET);
 					read(fd, buffer, block_size);
-					uint size_to_be_written = filesize - bytes_read;
+					uint size_to_be_written = filesize - current_size;
 					if (size_to_be_written > block_size)
 					{
 						size_to_be_written = block_size;
-						block_id++;
+						current_block++;
 					}
 					// printf("write %d bytes to file %d\n", size_to_be_written, i);
-					write(file_ptr, buffer, size_to_be_written);
+					write(real_name_file, buffer, size_to_be_written);
 					write(file_inode, buffer, size_to_be_written);
+					current_size += block_size;
 				}
 			}
 			// double indirect block
@@ -125,25 +130,28 @@ int main(int argc, char **argv)
 				uint double_buffer[256];
 				lseek(fd, BLOCK_OFFSET(inode->i_block[EXT2_DIND_BLOCK]), SEEK_SET);
 				read(fd, single_buffer, block_size);
-				uint single_id;
-				for (single_id = 0; bytes_read < filesize && single_id < 256; single_id++)
+				uint single_id = 0;
+				while (current_size < filesize && single_id < 256)
 				{
 					lseek(fd, BLOCK_OFFSET(single_buffer[single_id]), SEEK_SET);
 					read(fd, double_buffer, block_size);
-					for(block_id = 0; bytes_read < filesize && block_id < 256; bytes_read += block_size)
+					current_block = 0;
+					while (current_size < filesize && current_block < 256)
 					{
-						lseek(fd, BLOCK_OFFSET(double_buffer[block_id]), SEEK_SET);
+						lseek(fd, BLOCK_OFFSET(double_buffer[current_block]), SEEK_SET);
 						read(fd, buffer, block_size);
-						uint size_to_be_written = filesize - bytes_read;
+						uint size_to_be_written = filesize - current_size;
 						if (size_to_be_written > block_size)
 						{
 							size_to_be_written = block_size;
-							block_id++;
+							current_block++;
 						}
 						// printf("write %d bytes to file %d\n", size_to_be_written, i);
-						write(file_ptr, buffer, size_to_be_written);
+						write(real_name_file, buffer, size_to_be_written);
 						write(file_inode, buffer, size_to_be_written);
+						current_size += block_size;
 					}
+					single_id++;
 				}
 			}
 		}
@@ -184,7 +192,8 @@ int main(int argc, char **argv)
 
 		free(inode);
 	}
-	for(unsigned int i = 0; i < super.s_inodes_per_group; i++){
+	for (unsigned int i = 0; i < super.s_inodes_per_group; i++)
+	{
 		struct ext2_inode *inode = malloc(sizeof(struct ext2_inode));
 		read_inode(fd, 0, start_inode_table, i, inode);
 		if (S_ISDIR(inode->i_mode))
@@ -201,12 +210,13 @@ int main(int argc, char **argv)
 				char *name = malloc(256);
 				strncpy(name, dentry->name, dentry->name_len);
 				*(name + dentry->name_len) = '\0';
-				char* numbered_name = malloc(256);
+				char *numbered_name = malloc(256);
 				snprintf(numbered_name, 256, "%s/%d.jpg", argv[2], dentry->inode);
-				char* new_name = malloc(512); // double the size make sure it is enough
-				snprintf(new_name,512,"%s/%s",argv[2],name);
+				char *new_name = malloc(512); // double the size make sure it is enough
+				snprintf(new_name, 512, "%s/%s", argv[2], name);
 				FILE *file;
-				if((file = fopen(numbered_name, "r"))){
+				if ((file = fopen(numbered_name, "r")))
+				{
 					fclose(file);
 					rename(numbered_name, new_name);
 				}
